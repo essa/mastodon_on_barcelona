@@ -1,0 +1,174 @@
+#!/usr/bin/env ruby
+
+require 'thor'
+require 'json'
+require 'aws-sdk'
+require 'jbuilder'
+require './lib/mastodon_on_barcelona/cf_executor'
+
+include MastodonOnBarcelon
+
+module HelperMethods
+  def check_bcn
+    json = `bcn api get /user`
+    JSON.parse json
+  rescue
+    STDERR.puts $!
+    STDERR.puts "bcn doesn't work, install it and login to your barcelona"
+  end
+
+  def check_aws_creadential
+    cf_client.describe_stacks
+  rescue
+    STDERR.puts $!
+    STDERR.puts "can't access to AWS, set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY properly"
+  end
+
+  def create_stack(stack)
+    executor = CFExecutor.new(stack, cf_client)
+    executor.create_or_update
+    wait_cf_stack(executor)
+  end
+
+  private
+  def cf_client
+    @cf_client ||= Aws::CloudFormation::Client.new(
+      region: region
+    )
+  end
+
+  def wait_cf_stack(executor)
+    while true
+      sleep 10
+      case executor.stack_status
+      when "CREATE_COMPLETE"
+        puts
+        break
+      when /_IN_PROGRESS/
+        print "."
+      else
+        raise "Unexpected CF stack status"
+      end
+    end
+  end
+
+end
+
+class MastodonResourcesStack
+  def initialize(name)
+    @name = name
+  end
+
+  def name
+    "mstdn-#{@name}"
+    end
+
+  def build
+    Jbuilder.new do |j|
+      j.Description description
+      j.AWSTemplateFormatVersion "2010-09-09"
+
+      j.Parameters do |json|
+        build_parameters(json)
+      end
+
+      j.Resources do |json|
+        json.RedisSecurityGroup do |json| 
+          redis_sg(json)
+        end
+        json.RedisSubnetGroup do |json| 
+          redis_subnet_group(json)
+        end
+        #json.RedisCluster do |json| 
+        #  redis_cluster(json)
+        #end
+      end
+
+      j.Outputs do |json|
+        build_outputs(json)
+      end
+    end
+  end
+
+  def build_parameters(json)
+  end
+
+  def build_outputs(json)
+  end
+
+  def target!
+    build.target!
+  end
+
+  private
+
+  def redis_sg(j)
+    j.Type "AWS::ElastiCache::SecurityGroup"
+    j.Properties do
+      j.Description "redis SG for mastodon #{name}"
+    end
+  end
+
+  def redis_subnet_group(j)
+    j.Type "AWS::ElastiCache::SubnetGroup"
+    j.Properties do
+      j.CacheSubnetGroupName name
+      j.SubnetIds [ "subnet-59e8dd2f", "subnet-297e0a71" ]
+      j.Description "redis subnet groupt for mastodon #{name}"
+    end
+  end
+
+  def redis_cluster(j)
+    j.Type "AWS::ElastiCache::CacheCluster"
+    j.Properties do
+      j.ClusterName "testmstdn"
+      j.CacheNodeType "cache.t2.micro"
+      j.Engine "redis"
+      j.NumCacheNodes "1"
+      j.VpcSecurityGroupIds [ ref("RedisSecurityGroup")]
+      j.CacheSubnetGroupName ref("RedisSubnetGroup")
+    end
+  end
+
+  def description
+    "AWS CloudFormation for Barcelona #{name}"
+  end
+
+  def ref(r)
+    {"Ref" => r}
+  end
+
+end
+
+class CLI < Thor
+  include HelperMethods
+
+  desc 'check_env', 'check environt for this command'
+  def check_env
+    puts "checking environment..."
+    check_bcn
+    check_aws_creadential
+    puts "OK"
+  end
+
+  option :region
+  option :name, required: true
+  desc 'execute_all', 'allocate all resources'
+  def execute_all
+    puts "start"
+    #check_env
+    stack = MastodonResourcesStack.new(options[:name])
+    puts stack.target!
+    create_stack(stack)
+    puts "end of allocate_resources"
+  end
+
+  default_task :execute_all
+
+  private
+  def region
+    options[:region]
+  end
+end
+
+CLI.start(ARGV)

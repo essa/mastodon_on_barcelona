@@ -1,0 +1,13 @@
+/.bundle
+vendor/bundle
+/db/*.sqlite3
+/db/*.sqlite3-journal
+/log/*.log
+/tmp
+*.swp
+*~
+.project
+.DS_Store
+.idea
+.secret
+.env
