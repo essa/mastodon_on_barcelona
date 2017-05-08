@@ -8,7 +8,7 @@ module MastodonOnBarcelon
     end
 
     def describe
-      client.describe_stacks(stack_name: stack.name).stacks[0]
+      client.describe_stacks(stack_name: stack.stack_name).stacks[0]
     rescue Aws::CloudFormation::Errors::ValidationError
       # when a stack doesn't exist
       nil
@@ -29,7 +29,7 @@ module MastodonOnBarcelon
       client.update_stack(stack_options)
     rescue Aws::CloudFormation::Errors::ValidationError => e
       if e.message == "No updates are to be performed."
-        Rails.logger.warn "No updates are to be performed."
+        STDERR.puts "No updates are to be performed."
       else
         raise e
       end
@@ -37,7 +37,7 @@ module MastodonOnBarcelon
 
     def stack_options
       {
-        stack_name: stack.name,
+        stack_name: stack.stack_name,
         capabilities: ["CAPABILITY_IAM"],
         template_body: stack.target!
       }
@@ -67,7 +67,7 @@ module MastodonOnBarcelon
     # Returns CF ID => Real ID hash
     def resource_ids
       return @resource_ids if @resource_ids
-      resp = client.describe_stack_resources(stack_name: stack.name).stack_resources
+      resp = client.describe_stack_resources(stack_name: stack.stack_name).stack_resources
       @resource_ids = Hash[*resp.map { |r| [r.logical_resource_id, r.physical_resource_id] }.flatten]
     end
 
@@ -76,7 +76,7 @@ module MastodonOnBarcelon
     end
 
     def delete
-      client.delete_stack(stack_name: stack.name) if stack_status
+      client.delete_stack(stack_name: stack.stack_name) if stack_status
     end
   end
 end

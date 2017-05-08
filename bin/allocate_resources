@@ -31,6 +31,46 @@ module HelperMethods
   end
 
   private
+
+  def network_attributes
+    return @network_attributes if @network_attributes
+    r = vpc_client.describe_vpcs(
+      filters: [
+        {
+          name: "tag:barcelona",
+          values: [district_name]
+        },
+      ]
+    )
+    raise "vpc for #{distrct_name} not found" unless r.first.vpcs.first
+    vpc_id = r.first.vpcs.first.vpc_id
+
+    r = vpc_client.describe_subnets(
+      filters: [
+        {
+          name: "tag:barcelona",
+          values: [district_name]
+        },
+        {
+          name: "tag:Network",
+          values: ["Private"]
+        }
+
+      ]
+    )
+    subnet_ids = r.subnets.map(&:subnet_id)
+    {
+      vpc_id: vpc_id,
+      subnet_ids: subnet_ids
+    }
+  end
+
+  def vpc_client
+    @vpc_client ||= Aws::EC2::Client.new(
+      region: region
+    )
+  end
+
   def cf_client
     @cf_client ||= Aws::CloudFormation::Client.new(
       region: region
@@ -44,10 +84,13 @@ module HelperMethods
       when "CREATE_COMPLETE"
         puts
         break
+      when "UPDATE_COMPLETE"
+        puts
+        break
       when /_IN_PROGRESS/
         print "."
       else
-        raise "Unexpected CF stack status"
+        raise "Unexpected CF stack status #{executor.stack_status}"
       end
     end
   end
@@ -55,13 +98,19 @@ module HelperMethods
 end
 
 class MastodonResourcesStack
-  def initialize(name)
+  attr_reader :name, :network_attributes
+  def initialize(name, network_attributes)
     @name = name
+    @network_attributes = network_attributes
   end
 
-  def name
+  def resource_name
     "mstdn-#{@name}"
-    end
+  end
+
+  def stack_name
+    resource_name
+  end
 
   def build
     Jbuilder.new do |j|
@@ -79,9 +128,9 @@ class MastodonResourcesStack
         json.RedisSubnetGroup do |json| 
           redis_subnet_group(json)
         end
-        #json.RedisCluster do |json| 
-        #  redis_cluster(json)
-        #end
+        json.RedisCluster do |json| 
+          redis_cluster(json)
+        end
       end
 
       j.Outputs do |json|
@@ -103,25 +152,26 @@ class MastodonResourcesStack
   private
 
   def redis_sg(j)
-    j.Type "AWS::ElastiCache::SecurityGroup"
+    j.Type "AWS::EC2::SecurityGroup"
     j.Properties do
-      j.Description "redis SG for mastodon #{name}"
+      j.GroupDescription "redis SG for mastodon #{resource_name}"
+      j.VpcId network_attributes[:vpc_id]
     end
   end
 
   def redis_subnet_group(j)
     j.Type "AWS::ElastiCache::SubnetGroup"
     j.Properties do
-      j.CacheSubnetGroupName name
-      j.SubnetIds [ "subnet-59e8dd2f", "subnet-297e0a71" ]
-      j.Description "redis subnet groupt for mastodon #{name}"
+      j.CacheSubnetGroupName resource_name
+      j.SubnetIds network_attributes[:subnet_ids]
+      j.Description "redis subnet groupt for mastodon #{resource_name}"
     end
   end
 
   def redis_cluster(j)
     j.Type "AWS::ElastiCache::CacheCluster"
     j.Properties do
-      j.ClusterName "testmstdn"
+      j.ClusterName resource_name
       j.CacheNodeType "cache.t2.micro"
       j.Engine "redis"
       j.NumCacheNodes "1"
@@ -131,7 +181,7 @@ class MastodonResourcesStack
   end
 
   def description
-    "AWS CloudFormation for Barcelona #{name}"
+    "AWS CloudFormation for Barcelona #{resource_name}"
   end
 
   def ref(r)
@@ -153,11 +203,12 @@ class CLI < Thor
 
   option :region
   option :name, required: true
+  option :district_name, required: true
   desc 'execute_all', 'allocate all resources'
   def execute_all
     puts "start"
     #check_env
-    stack = MastodonResourcesStack.new(options[:name])
+    stack = MastodonResourcesStack.new(options[:name], network_attributes)
     puts stack.target!
     create_stack(stack)
     puts "end of allocate_resources"
@@ -168,6 +219,10 @@ class CLI < Thor
   private
   def region
     options[:region]
+  end
+
+  def district_name
+    options[:district_name]
   end
 end
 
