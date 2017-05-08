@@ -58,10 +58,12 @@ module HelperMethods
 
       ]
     )
-    subnet_ids = r.subnets.map(&:subnet_id)
-    {
+    subnet_ids = r.first.subnets.map(&:subnet_id)
+    subnet_cidrs = r.first.subnets.map(&:cidr_block)
+    @network_attributes = {
       vpc_id: vpc_id,
-      subnet_ids: subnet_ids
+      subnet_ids: subnet_ids,
+      subnet_cidrs: subnet_cidrs
     }
   end
 
@@ -122,8 +124,8 @@ class MastodonResourcesStack
       end
 
       j.Resources do |json|
-        json.RedisSecurityGroup do |json| 
-          redis_sg(json)
+        json.DBSecurityGroup do |json| 
+          db_security_group(json)
         end
         json.RedisSubnetGroup do |json| 
           redis_subnet_group(json)
@@ -151,11 +153,30 @@ class MastodonResourcesStack
 
   private
 
-  def redis_sg(j)
+  def db_security_group(j)
+    subnet_cidrs = network_attributes[:subnet_cidrs]
+    ingress = subnet_cidrs.map do |cidr|
+       [
+         {
+           "IpProtocol" => "tcp",
+           "FromPort" => 5432,
+           "ToPort" => 5432,
+           "CidrIp" => cidr
+         },
+         {
+           "IpProtocol" => "tcp",
+           "FromPort" => 6379,
+           "ToPort" => 6379,
+           "CidrIp" => cidr
+         },
+       ]
+    end.flatten
+    p ingress
     j.Type "AWS::EC2::SecurityGroup"
     j.Properties do
-      j.GroupDescription "redis SG for mastodon #{resource_name}"
+      j.GroupDescription "DB security group for mastodon #{resource_name}"
       j.VpcId network_attributes[:vpc_id]
+      j.SecurityGroupIngress ingress
     end
   end
 
@@ -164,7 +185,7 @@ class MastodonResourcesStack
     j.Properties do
       j.CacheSubnetGroupName resource_name
       j.SubnetIds network_attributes[:subnet_ids]
-      j.Description "redis subnet groupt for mastodon #{resource_name}"
+      j.Description "redis subnet group for mastodon #{resource_name}"
     end
   end
 
@@ -175,7 +196,7 @@ class MastodonResourcesStack
       j.CacheNodeType "cache.t2.micro"
       j.Engine "redis"
       j.NumCacheNodes "1"
-      j.VpcSecurityGroupIds [ ref("RedisSecurityGroup")]
+      j.VpcSecurityGroupIds [ ref("DBSecurityGroup")]
       j.CacheSubnetGroupName ref("RedisSubnetGroup")
     end
   end
