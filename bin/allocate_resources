@@ -95,6 +95,7 @@ module HelperMethods
         raise "Unexpected CF stack status #{executor.stack_status}"
       end
     end
+    p executor.outputs
   end
 
 end
@@ -154,7 +155,11 @@ class MastodonResourcesStack
   def build_parameters(json)
   end
 
-  def build_outputs(json)
+  def build_outputs(j)
+    j.MediaBucket do |jj| 
+      jj.Description "S3 bucket name for storing media"
+      jj.Value ref("MediaBucket")
+    end
   end
 
   def target!
@@ -181,7 +186,6 @@ class MastodonResourcesStack
          },
        ]
     end.flatten
-    p ingress
     j.Type "AWS::EC2::SecurityGroup"
     j.Properties do
       j.GroupDescription "DB security group for mastodon #{resource_name}"
@@ -252,6 +256,10 @@ class MastodonResourcesStack
     {"Ref" => r}
   end
 
+  def get_attr(*path)
+    {"Fn::GetAtt" => path}
+  end
+
 end
 
 class CLI < Thor
@@ -278,7 +286,8 @@ class CLI < Thor
     puts "start"
     #check_env
     stack = MastodonResourcesStack.new(options[:name], network_attributes, options)
-    puts stack.target!
+    json = JSON.parse(stack.target!)
+    puts JSON.pretty_generate json
     create_stack(stack)
     puts "end of allocate_resources"
   end
