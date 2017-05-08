@@ -160,6 +160,14 @@ class MastodonResourcesStack
       jj.Description "S3 bucket name for storing media"
       jj.Value ref("MediaBucket")
     end
+    j.DBEndPoint do |jj| 
+      jj.Description "The end point of DB instance"
+      jj.Value get_attr("DBInstance", "Endpoint.Address")
+    end
+    j.RedisEndPoint do |jj| 
+      jj.Description "The end point of DB instance"
+      jj.Value get_attr("RedisCluster", "RedisEndpoint.Address")
+    end
   end
 
   def target!
