@@ -100,10 +100,11 @@ module HelperMethods
 end
 
 class MastodonResourcesStack
-  attr_reader :name, :network_attributes
-  def initialize(name, network_attributes)
+  attr_reader :name, :network_attributes, :options
+  def initialize(name, network_attributes, options)
     @name = name
     @network_attributes = network_attributes
+    @options = options
   end
 
   def resource_name
@@ -119,19 +120,28 @@ class MastodonResourcesStack
       j.Description description
       j.AWSTemplateFormatVersion "2010-09-09"
 
-      j.Parameters do |json|
-        build_parameters(json)
+      j.Parameters do |jj|
+        build_parameters(jj)
       end
 
-      j.Resources do |json|
-        json.DBSecurityGroup do |json| 
-          db_security_group(json)
+      j.Resources do |jj|
+        jj.DBSecurityGroup do |jjj| 
+          db_security_group(jjj)
         end
-        json.RedisSubnetGroup do |json| 
-          redis_subnet_group(json)
+        jj.RedisSubnetGroup do |jjj| 
+          redis_subnet_group(jjj)
         end
-        json.RedisCluster do |json| 
-          redis_cluster(json)
+        jj.RedisCluster do |jjj| 
+          redis_cluster(jjj)
+        end
+        jj.DBSubnetGroup do |jjj| 
+          db_subnet_group(jjj)
+        end
+        jj.DBInstance do |jjj| 
+          db_instance(jjj)
+        end
+        jj.MediaBucket do |jjj| 
+          media_bucket(jjj)
         end
       end
 
@@ -201,6 +211,39 @@ class MastodonResourcesStack
     end
   end
 
+  def db_subnet_group(j)
+    j.Type "AWS::RDS::DBSubnetGroup"
+    j.Properties do
+      j.DBSubnetGroupDescription "db subnet group for mastodon #{resource_name}"
+      j.SubnetIds network_attributes[:subnet_ids]
+    end
+  end
+
+  def db_instance(j)
+    j.Type "AWS::RDS::DBInstance"
+    j.Properties do
+      j.AllocatedStorage options[:allocated_strage]
+      j.AllowMajorVersionUpgrade true
+      j.AutoMinorVersionUpgrade true
+      j.Engine "postgres"
+      j.DBInstanceClass options[:db_instance_class]
+      j.DBInstanceIdentifier resource_name
+      j.DBName 'mstdn'
+      j.MasterUsername options[:db_user]
+      j.MasterUserPassword options[:db_password]
+      j.MultiAZ options[:db_multi_az]
+      j.VPCSecurityGroups [
+        ref("DBSecurityGroup")
+      ]
+      j.DBSubnetGroupName ref("DBSubnetGroup")
+      j.StorageType "gp2"
+    end
+  end
+
+  def media_bucket(j)
+    j.Type "AWS::S3::Bucket"
+  end
+
   def description
     "AWS CloudFormation for Barcelona #{resource_name}"
   end
@@ -225,11 +268,16 @@ class CLI < Thor
   option :region
   option :name, required: true
   option :district_name, required: true
+  option :allocated_strage, default: '5' # GB
+  option :db_instance_class, default: 'db.t2.micro'
+  option :db_multi_az, default: 'false'
+  option :db_user, default: 'mastodon_admin'
+  option :db_password, required: true
   desc 'execute_all', 'allocate all resources'
   def execute_all
     puts "start"
     #check_env
-    stack = MastodonResourcesStack.new(options[:name], network_attributes)
+    stack = MastodonResourcesStack.new(options[:name], network_attributes, options)
     puts stack.target!
     create_stack(stack)
     puts "end of allocate_resources"
