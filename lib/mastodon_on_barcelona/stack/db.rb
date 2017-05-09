@@ -54,6 +54,10 @@ module MastodonOnBarcelon
           jj.Description "The end point of DB instance"
           jj.Value get_attr("DBInstance", "Endpoint.Address")
         end
+        j.DBSecurityGroup do |jj| 
+          jj.Description "The security group for redis and postgres"
+          jj.Value ref("DBSecurityGroup")
+        end
       end
 
       private
@@ -93,18 +97,19 @@ module MastodonOnBarcelon
       end
 
       def db_instance(j)
+        c = config[:db]
         j.Type "AWS::RDS::DBInstance"
         j.Properties do
-          j.AllocatedStorage options[:allocated_strage]
+          j.AllocatedStorage c[:allocated_storage]
           j.AllowMajorVersionUpgrade true
           j.AutoMinorVersionUpgrade true
           j.Engine "postgres"
-          j.DBInstanceClass options[:db_instance_class]
+          j.DBInstanceClass c[:instance_class]
           j.DBInstanceIdentifier resource_name
           j.DBName 'mstdn'
-          j.MasterUsername options[:db_user]
-          j.MasterUserPassword options[:db_password]
-          j.MultiAZ options[:db_multi_az]
+          j.MasterUsername c[:user]
+          j.MasterUserPassword c[:password]
+          j.MultiAZ c[:multi_az]
           j.VPCSecurityGroups [
             ref("DBSecurityGroup")
           ]

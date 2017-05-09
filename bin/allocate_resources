@@ -11,6 +11,13 @@ require './lib/mastodon_on_barcelona/stack/base'
 require './lib/mastodon_on_barcelona/stack/db'
 require './lib/mastodon_on_barcelona/stack/resources'
 
+class Hash
+  def deep_symbolize_keys
+    self.each_with_object({}){|(k,v),memo| memo[k.to_s.to_sym]=(v.is_a?(Hash) ? v.deep_symbolize_keys : v)}
+  end
+end
+
+
 include MastodonOnBarcelon
 
 module HelperMethods
@@ -34,17 +41,18 @@ module HelperMethods
   end
 
   def create_stack(stack_cls, config, network_attributes, resources)
-    stack = stack_cls.new(options[:name], network_attributes, config, resources)
+    stack = stack_cls.new(config[:heritage_name], config, network_attributes, resources)
     json = JSON.parse(stack.target!)
     puts JSON.pretty_generate json
     executor = CFExecutor.new(stack, cf_client)
     executor.create_or_update
     wait_cf_stack(executor)
+    resources.add executor.outputs
   end
 
   private
 
-  def network_attributes
+  def network_attributes(district_name)
     return @network_attributes if @network_attributes
     r = vpc_client.describe_vpcs(
       filters: [
@@ -103,7 +111,6 @@ module HelperMethods
         raise "Unexpected CF stack status #{executor.stack_status}"
       end
     end
-    p executor.outputs
   end
 
 end
@@ -126,6 +133,14 @@ class Config
     @values = {}
   end
 
+  def [](key)
+    @values[:config][key]
+  end
+
+  def []=(key, value)
+    @values[:config][key] = value
+  end
+
   def create(options)
     if File::exists?(path)
       ans = cli.yes?('You already have configured once, existing config.yaml will be overwritten ok?')
@@ -139,7 +154,7 @@ class Config
   end
 
   def load
-    @values = YAML::load(File::open(path).read)
+    @values = YAML::load(File::open(path).read).deep_symbolize_keys
     self
   rescue
     cli.say $!
@@ -155,7 +170,7 @@ config:
     user: mastodon_admin
     password: <%= options[:db_password] %>
     allocated_storage: 5 # MB
-    instance_type: db.t2.micro
+    instance_class: db.t2.micro
     storage_type: gp2
     multi_az: false
   redis:
@@ -179,7 +194,7 @@ class Resources
   end
 
   def load
-    @values = YAML::load(File::open(path).read)
+    @values = YAML::load(File::open(path).read).deep_symbolize_keys
     self
   rescue Errno::ENOENT
     @values = {}
@@ -191,7 +206,13 @@ class Resources
     exit(1)
   end
 
+  def add(h)
+    p 345, @values, h
+    @values.merge!(h)
+  end
+
   def save
+    p values, values.to_yaml
     File::open(path, 'w') do |f| 
       f.puts values.to_yaml
     end
@@ -218,7 +239,8 @@ class CLI < Thor
   def create_db
     config = Config.load(self)
     resources = Resources.load(self)
-    create_stack(Stack::DB, config.values, network_attributes, resources)
+    district_name = config[:district_name]
+    create_stack(Stack::DB, config, network_attributes(district_name), resources)
     resources.save
   end
 

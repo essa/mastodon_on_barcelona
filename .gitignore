@@ -13,5 +13,6 @@ vendor/bundle
 .env
 
 config.yaml
+resources.yaml
 mastodon
 

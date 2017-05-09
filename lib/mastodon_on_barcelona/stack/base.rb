@@ -10,7 +10,7 @@ module MastodonOnBarcelon
   module Stack
 
     class Base
-      attr_reader :name, :network_attributes, :options
+      attr_reader :name, :network_attributes, :config, :resources
       def initialize(name, config, network_attributes, resources)
         @name = name
         @config = config
