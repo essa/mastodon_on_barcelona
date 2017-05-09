@@ -11,3 +11,7 @@ vendor/bundle
 .idea
 .secret
 .env
+
+config.yaml
+mastodon
+

@@ -4,6 +4,8 @@ require 'thor'
 require 'json'
 require 'aws-sdk'
 require 'jbuilder'
+require 'erb'
+require 'yaml'
 require './lib/mastodon_on_barcelona/cf_executor'
 
 include MastodonOnBarcelon
@@ -12,16 +14,20 @@ module HelperMethods
   def check_bcn
     json = `bcn api get /user`
     JSON.parse json
+    true
   rescue
     STDERR.puts $!
     STDERR.puts "bcn doesn't work, install it and login to your barcelona"
+    false
   end
 
   def check_aws_creadential
     cf_client.describe_stacks
+    true
   rescue
     STDERR.puts $!
     STDERR.puts "can't access to AWS, set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY properly"
+    false
   end
 
   def create_stack(stack)
@@ -270,16 +276,60 @@ class MastodonResourcesStack
 
 end
 
+class Config
+  def self.create(cli, options)
+    new(cli).create(options)
+  end
+
+  def self.load(cli)
+    new(cli).load
+  end
+
+  attr_reader :cli, :path, :values
+
+  def initialize(cli)
+    @cli = cli
+    @path = 'config.yaml'
+    @values = {}
+  end
+
+  def create(options)
+    if File::exists?(path)
+      ans = cli.yes?('You already have configured once, existing config.yaml will be overwritten ok?')
+      exit(1) unless ans
+    end
+    s = ERB.new(TEMPLATE).result(binding)
+    File::open(path, 'w') do |f| 
+      f.puts s
+    end
+    cli.say("config.yaml is created. This file is used by later subcommands. Please check and edit it if you think you need to")
+  end
+
+  def load
+    @values = YAML::load(File::open(path).read)
+  end
+  TEMPLATE =<<EOT
+config:
+  region: <%= options[:region] %>
+  district_name: <%= options[:district_name] %>
+  heritage_name: <%= options[:name] %>
+  db:
+    user: mastodon_admin
+    password: <%= options[:db_password] %>
+    allocated_storage: 5 # MB
+    instance_type: db.t2.micro
+    storage_type: gp2
+  redis:
+    cache_node_type: cache.t2.micro
+    num_cache_nodes: 1
+
+EOT
+end
+
 class CLI < Thor
   include HelperMethods
 
   desc 'check_env', 'check environt for this command'
-  def check_env
-    puts "checking environment..."
-    check_bcn
-    check_aws_creadential
-    puts "OK"
-  end
 
   option :region
   option :name, required: true
@@ -289,6 +339,13 @@ class CLI < Thor
   option :db_multi_az, default: 'false'
   option :db_user, default: 'mastodon_admin'
   option :db_password, required: true
+
+  desc 'config', 'Configure for later process'
+  def config
+    check_env
+    Config.create(self, options)
+  end
+
   desc 'execute_all', 'allocate all resources'
   def execute_all
     puts "start"
@@ -303,6 +360,12 @@ class CLI < Thor
   default_task :execute_all
 
   private
+  def check_env
+    say "checking environment... "
+    ret = check_bcn && check_aws_creadential
+    exit(1) unless ret
+    say "OK"
+  end
   def region
     options[:region]
   end
