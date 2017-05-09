@@ -15,6 +15,9 @@ class Hash
   def deep_symbolize_keys
     self.each_with_object({}){|(k,v),memo| memo[k.to_s.to_sym]=(v.is_a?(Hash) ? v.deep_symbolize_keys : v)}
   end
+  def deep_stringify_keys
+    self.each_with_object({}){|(k,v),memo| memo[k.to_s]=(v.is_a?(Hash) ? v.deep_symbolize_keys : v)}
+  end
 end
 
 
@@ -193,6 +196,10 @@ class Resources
     load
   end
 
+  def [](key)
+    @values[key]
+  end
+
   def load
     @values = YAML::load(File::open(path).read).deep_symbolize_keys
     self
@@ -207,14 +214,13 @@ class Resources
   end
 
   def add(h)
-    p 345, @values, h
     @values.merge!(h)
   end
 
   def save
     p values, values.to_yaml
     File::open(path, 'w') do |f| 
-      f.puts values.to_yaml
+      f.puts values.deep_stringify_keys.to_yaml
     end
   end
 end
@@ -240,7 +246,18 @@ class CLI < Thor
     config = Config.load(self)
     resources = Resources.load(self)
     district_name = config[:district_name]
-    create_stack(Stack::DB, config, network_attributes(district_name), resources)
+    network_attributes = network_attributes(district_name)
+    create_stack(Stack::DB, config, network_attributes, resources)
+    resources.save
+  end
+
+  desc 'manage_aws_resources', 'Create or update AWS resources'
+  def manage_aws_resources_db
+    config = Config.load(self)
+    resources = Resources.load(self)
+    district_name = config[:district_name]
+    network_attributes = network_attributes(district_name)
+    create_stack(Stack::Resources, config, network_attributes, resources)
     resources.save
   end
 

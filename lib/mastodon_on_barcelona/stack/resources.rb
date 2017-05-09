@@ -6,7 +6,7 @@ require 'jbuilder'
 
 module MastodonOnBarcelon
   module Stack
-    class Resources
+    class Resources < Base
 
       def build
         Jbuilder.new do |j|
@@ -37,7 +37,7 @@ module MastodonOnBarcelon
 
       def build_outputs(j)
         j.RedisEndPoint do |jj| 
-          jj.Description "The end point of DB instance"
+          jj.Description "The end point of redis instance"
           jj.Value get_attr("RedisCluster", "RedisEndpoint.Address")
         end
       end
@@ -58,13 +58,14 @@ module MastodonOnBarcelon
       end
 
       def redis_cluster(j)
+        c = config[:redis]
         j.Type "AWS::ElastiCache::CacheCluster"
         j.Properties do
           j.ClusterName resource_name
-          j.CacheNodeType "cache.t2.micro"
+          j.CacheNodeType c[:cache_node_type]
           j.Engine "redis"
-          j.NumCacheNodes "1"
-          j.VpcSecurityGroupIds [ ref("DBSecurityGroup")]
+          j.NumCacheNodes c[:num_cache_nodes]
+          j.VpcSecurityGroupIds [ resources[:DBSecurityGroup]]
           j.CacheSubnetGroupName ref("RedisSubnetGroup")
         end
       end
