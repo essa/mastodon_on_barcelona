@@ -30,6 +30,15 @@ module MastodonOnBarcelon
             jj.AdminUserAccessKey do |jjj| 
               admin_user_access_key(jjj)
             end
+            jj.DockerRepositoryForNginx do |jjj| 
+              docker_repository_for_nginx(jjj)
+            end
+            jj.DockerRepositoryForSmtp do |jjj| 
+              docker_repository_for_smtp(jjj)
+            end
+            jj.DockerRepositoryForMastodon do |jjj| 
+              docker_repository_for_mastodon(jjj)
+            end
           end
 
           j.Outputs do |json|
@@ -53,6 +62,18 @@ module MastodonOnBarcelon
         j.AwsSecretAccessKey do |jj|
           jj.Description "secret access key for admin"
           jj.Value get_attr("AdminUserAccessKey", "SecretAccessKey")
+        end
+        j.RepositoryForNginx do |jj| 
+          jj.Description "Docker repository"
+          jj.Value ref("DockerRepositoryForNginx")
+        end
+        j.RepositoryForSmtp do |jj| 
+          jj.Description "Docker repository"
+          jj.Value ref("DockerRepositoryForSmtp")
+        end
+        j.RepositoryForMastodon do |jj| 
+          jj.Description "Docker repository"
+          jj.Value ref("DockerRepositoryForMastodon")
         end
       end
 
@@ -119,6 +140,56 @@ module MastodonOnBarcelon
         j.Properties do
           j.UserName admin_user_name
         end
+      end
+
+      def docker_repository_for_nginx(j)
+        j.Type "AWS::ECR::Repository"
+        j.Properties do
+          j.RepositoryName "#{resource_name}-nginx"
+          j.RepositoryPolicyText docker_repository_policy_text
+        end
+      end
+
+      def docker_repository_for_smtp(j)
+        j.Type "AWS::ECR::Repository"
+        j.Properties do
+          j.RepositoryName "#{resource_name}-smtp"
+          j.RepositoryPolicyText docker_repository_policy_text
+        end
+      end
+
+      def docker_repository_for_mastodon(j)
+        j.Type "AWS::ECR::Repository"
+        j.Properties do
+          j.RepositoryName "#{resource_name}-mastodon"
+          j.RepositoryPolicyText docker_repository_policy_text
+        end
+      end
+
+      def docker_repository_policy_text
+        { 
+          "Version" => "2008-10-17",
+          "Statement" => [
+            {
+              "Sid" => "AllowPushPull",
+              "Effect" => "Allow",
+              "Principal" => {
+                "AWS" => [
+                  get_attr("AdminUser", "Arn")
+                ]
+              },
+              "Action" => [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:PutImage",
+                "ecr:InitiateLayerUpload",
+                "ecr:UploadLayerPart",
+                "ecr:CompleteLayerUpload"
+              ]
+            }
+          ]
+        }
       end
 
       def description
