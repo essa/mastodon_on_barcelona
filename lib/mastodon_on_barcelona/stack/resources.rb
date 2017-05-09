@@ -24,6 +24,12 @@ module MastodonOnBarcelon
             jj.RedisCluster do |jjj| 
               redis_cluster(jjj)
             end
+            jj.AdminUser do |jjj| 
+              admin_user(jjj)
+            end
+            jj.AdminUserAccessKey do |jjj| 
+              admin_user_access_key(jjj)
+            end
           end
 
           j.Outputs do |json|
@@ -39,6 +45,14 @@ module MastodonOnBarcelon
         j.RedisEndPoint do |jj| 
           jj.Description "The end point of redis instance"
           jj.Value get_attr("RedisCluster", "RedisEndpoint.Address")
+        end
+        j.AwsAccessKeyId do |jj|
+          jj.Description "access key for admin"
+          jj.Value ref("AdminUserAccessKey")
+        end
+        j.AwsSecretAccessKey do |jj|
+          jj.Description "secret access key for admin"
+          jj.Value get_attr("AdminUserAccessKey", "SecretAccessKey")
         end
       end
 
@@ -70,8 +84,49 @@ module MastodonOnBarcelon
         end
       end
 
+      def admin_user(j)
+        district_name = config[:district_name]
+        heritage_name = config[:heritage_name]
+        media_bucket_arn = "arn:aws:s3:::#{resources[:MediaBucket]}"
+        j.Type "AWS::IAM::User"
+        j.Properties do
+          j.UserName admin_user_name
+          j.Policies [
+            {
+              "PolicyName" => "FullAccessToMedia#{district_name}#{heritage_name}",
+              "PolicyDocument" => {
+                "Version" => "2012-10-17",
+                "Statement" => [
+                  {
+                    "Effect" => "Allow",
+                    "Action" => [
+                      "S3:*"
+                    ],
+                    "Resource" => [
+                      media_bucket_arn,
+                      "#{media_bucket_arn}/*"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        end
+      end
+
+      def admin_user_access_key(j)
+        j.Type "AWS::IAM::AccessKey"
+        j.Properties do
+          j.UserName admin_user_name
+        end
+      end
+
       def description
         "AWS CloudFormation for Barcelona #{resource_name}"
+      end
+
+      def admin_user_name
+        "admin-#{config[:district_name]}-#{config[:heritage_name]}"
       end
     end
   end

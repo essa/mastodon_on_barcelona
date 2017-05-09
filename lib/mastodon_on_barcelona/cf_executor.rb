@@ -38,7 +38,7 @@ module MastodonOnBarcelon
     def stack_options
       {
         stack_name: stack.stack_name,
-        capabilities: ["CAPABILITY_IAM"],
+        capabilities: ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
         template_body: stack.target!
       }
     end
