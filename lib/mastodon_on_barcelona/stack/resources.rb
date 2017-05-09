@@ -33,9 +33,6 @@ module MastodonOnBarcelon
             jj.DockerRepositoryForNginx do |jjj| 
               docker_repository_for_nginx(jjj)
             end
-            jj.DockerRepositoryForSmtp do |jjj| 
-              docker_repository_for_smtp(jjj)
-            end
             jj.DockerRepositoryForMastodon do |jjj| 
               docker_repository_for_mastodon(jjj)
             end
@@ -66,10 +63,6 @@ module MastodonOnBarcelon
         j.RepositoryForNginx do |jj| 
           jj.Description "Docker repository"
           jj.Value ref("DockerRepositoryForNginx")
-        end
-        j.RepositoryForSmtp do |jj| 
-          jj.Description "Docker repository"
-          jj.Value ref("DockerRepositoryForSmtp")
         end
         j.RepositoryForMastodon do |jj| 
           jj.Description "Docker repository"
@@ -146,14 +139,6 @@ module MastodonOnBarcelon
         j.Type "AWS::ECR::Repository"
         j.Properties do
           j.RepositoryName "#{resource_name}-nginx"
-          j.RepositoryPolicyText docker_repository_policy_text
-        end
-      end
-
-      def docker_repository_for_smtp(j)
-        j.Type "AWS::ECR::Repository"
-        j.Properties do
-          j.RepositoryName "#{resource_name}-smtp"
           j.RepositoryPolicyText docker_repository_policy_text
         end
       end
