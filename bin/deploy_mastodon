@@ -24,6 +24,15 @@ end
 include MastodonOnBarcelon
 
 module HelperMethods
+  def cmd(cmdline)
+    puts cmdline
+    ret = system cmdline
+    unless ret
+      say("'#{cmdline[0..80]}...' failed")
+      exit(1)
+    end 
+  end
+
   def check_bcn
     json = `bcn api get /user`
     JSON.parse json
@@ -51,6 +60,24 @@ module HelperMethods
     executor.create_or_update
     wait_cf_stack(executor)
     resources.add executor.outputs
+  end
+
+  def checkout_mastodon(config)
+    repository = config[:mastodon_source][:repository]
+    branch = config[:mastodon_source][:branch]
+    checkout_command = "git clone #{repository} && cd mastodon && git checkout #{branch}"
+    cmd(checkout_command)
+  end
+
+  def build_and_push_docker_image(config, resources)
+    repository_uri = get_repository_uri(resources[:RepositoryForMastodon])
+    c = <<-EOC.split("\n").join(' &&')
+      eval `aws ecr get-login`
+      cd mastodon
+      docker build . -t '#{repository_uri}:latest'
+      docker push '#{repository_uri}:latest'
+    EOC
+    cmd(c)
   end
 
   private
@@ -98,6 +125,10 @@ module HelperMethods
     @cf_client ||= Aws::CloudFormation::Client.new
   end
 
+  def ecr_client
+    @ecr_client ||= Aws::ECR::Client.new
+  end
+
   def wait_cf_stack(executor)
     while true
       sleep 10
@@ -116,6 +147,17 @@ module HelperMethods
     end
   end
 
+  def render_template(from, to, namespace={})
+    erb = ERB.new(File.read(from))
+    open(to, 'w') do |f|
+      f << erb.result(OpenStruct.new(namespace).instance_eval{ binding })
+    end
+  end
+
+  def get_repository_uri(name)
+    r = ecr_client.describe_repositories(repository_names: [name])
+    r.repositories.first.repository_uri
+  end
 end
 
 
@@ -179,6 +221,12 @@ config:
   redis:
     cache_node_type: cache.t2.micro
     num_cache_nodes: 1
+  mastodon_source:
+    repository: https://github.com/essa/mastodon.git
+    branch: barcelona
+  ecs:
+    instance_type: t2.small
+    cluster_size: 2
 
 EOT
 end
@@ -259,6 +307,25 @@ class CLI < Thor
     network_attributes = network_attributes(district_name)
     create_stack(Stack::Resources, config, network_attributes, resources)
     resources.save
+  end
+
+  desc 'setup_ecs_cluster', 'Increase number of host instances'
+  def setup_ecs_cluster
+    config = Config.load(self)
+    district_name = config[:district_name]
+    json = {
+      instance_type: config[:ecs][:instance_type],
+      cluster_size: config[:ecs][:cluster_size]
+    }.to_json
+    cmd("bcn api patch /districts/#{district_name} '#{json}' && bcn api post /districts/#{district_name}/apply_stack")
+  end
+
+  desc 'push_docker_image', 'Create and push the docker image for mastodon'
+  def push_docker_image
+    config = Config.load(self)
+    resources = Resources.load(self)
+    checkout_mastodon(config) unless File::directory?('mastodon')
+    build_and_push_docker_image(config, resources)
   end
 
   desc 'execute_all', 'allocate all resources'
