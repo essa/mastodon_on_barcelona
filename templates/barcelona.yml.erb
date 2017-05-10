@@ -1,0 +1,42 @@
+
+# $(aws ecr get-login --region ap-northeast-1) && docker build . -t 822761295011.dkr.ecr.ap-northeast-1.amazonaws.com/mstdn-m001-mastodon:latest && docker push 822761295011.dkr.ecr.ap-northeast-1.amazonaws.com/mstdn-m001-mastodon:latest
+
+# bcn endpoint create --district=mstdn --certificate-arn=arn:aws:acm:ap-northeast-1:1234567890:certificate/xxx mstdn
+
+web_base: &web_base
+  service_type: web
+  force_ssl: true
+  cpu: 256
+  memory: 768
+
+worker_base: &worker_base
+  cpu: 128
+  memory: 512
+
+environments:
+  production:
+    name: <%= heritage_name %>
+    image_name: <%= repository_uri %>
+    scheduled_tasks:
+      - schedule: cron(15 20 ? * * *)
+        command: rake mastodon:daily
+    services:
+      - <<: *web_base
+        name: web
+        command: bundle exec rails s -p 3000 -b '0.0.0.0'
+        listeners:
+          - endpoint: mstdn
+            health_check_path: /about
+      - <<: *web_base
+        name: streaming
+        command: npm run start
+        listeners:
+          - endpoint: mstdn
+            rule_conditions:
+              - type: path-pattern
+                value: /api/v1/streaming
+            health_check_path: /api/v1/streaming/health_check
+            rule_priority: 10
+      - <<: *worker_base
+        name: worker
+        command: bundle exec sidekiq -q default -q mailers -q pull -q push
