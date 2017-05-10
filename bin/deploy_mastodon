@@ -94,12 +94,12 @@ module HelperMethods
     render_template(from, to, params)
   end
 
-  def create_endpoint_and_heritage(config, resources)
+  def do_create_heritage(config, resources)
+    # certificate_arn = config[:certificate_arn]
+    # bcn endpoint create --district=#{district_name} --certificate-arn=#{certificate_arn} mstdn
     district_name = config[:district_name]
-    certificate_arn = config[:certificate_arn]
     c = <<-EOC.split("\n").join(' &&')
       cd mastodon
-      bcn endpoint create --district=#{district_name} --certificate-arn=#{certificate_arn} mstdn
       bcn create --district=#{district_name} -e production
     EOC
     cmd(c)
@@ -114,7 +114,7 @@ module HelperMethods
       REDIS_PORT: 6379,
       DB_HOST: resources[:DBEndPoint],
       DB_USER: config[:db][:user],
-      DB_NAME: config[:db][:password],
+      DB_NAME: 'mstdn',
       DB_PORT: 5432,
 
       LOCAL_DOMAIN: config[:localdomain],
@@ -271,12 +271,13 @@ class Config
   TEMPLATE =<<EOT
 config:
   region: <%= options[:region] %>
+  hostname: <%= options[:hostname] %>
   district_name: <%= options[:district_name] %>
   heritage_name: <%= options[:name] %>
   certificate_arn: <%= options[:certificate_arn] %>
   db:
     user: mastodon_admin
-    password: <%= options[:db_password] %>
+    password: <%= SecureRandom.hex %>
     allocated_storage: 5 # MB
     instance_class: db.t2.micro
     storage_type: gp2
@@ -348,8 +349,8 @@ class CLI < Thor
   option :region
   option :name, required: true
   option :district_name, required: true
-  option :db_password, required: true
   option :certificate_arn, required: true
+  option :hostname, required: true
 
   desc 'config', 'Configure for later process'
   def config
@@ -401,7 +402,7 @@ class CLI < Thor
     config = Config.load(self)
     resources = Resources.load(self)
     install_barcelona_yml(config, resources)
-    create_endpoint_and_heritage(config, resources)
+    do_create_heritage(config, resources)
   end
 
   desc 'set_environment_variables', 'Set environemt variables to barcelona heritage'

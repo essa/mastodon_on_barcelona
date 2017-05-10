@@ -24,6 +24,9 @@ module MastodonOnBarcelon
             jj.RedisCluster do |jjj| 
               redis_cluster(jjj)
             end
+            jj.PolicyFullAccessToRepositories do |jjj| 
+              policy_full_acccess_to_repositories(jjj)
+            end
             jj.AdminUser do |jjj| 
               admin_user(jjj)
             end
@@ -95,6 +98,39 @@ module MastodonOnBarcelon
           j.NumCacheNodes c[:num_cache_nodes]
           j.VpcSecurityGroupIds [ resources[:DBSecurityGroup]]
           j.CacheSubnetGroupName ref("RedisSubnetGroup")
+        end
+      end
+
+      def policy_full_acccess_to_repositories(j)
+        district_name = config[:district_name]
+        heritage_name = config[:heritage_name]
+        j.Type "AWS::IAM::Policy"
+        j.Properties do
+          j.PolicyName "FullAccessToRepositories#{district_name}#{heritage_name}"
+          j.Users [ ref("AdminUser") ]
+          j.PolicyDocument(
+            { 
+              "Version" => "2008-10-17",
+              "Statement" => [
+                {
+                  "Sid" => "AllowPushPull",
+                  "Effect" => "Allow",
+                  "Action" => [
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:PutImage",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload"
+                  ],
+                  "Resource" => [
+                    get_attr("DockerRepositoryForMastodon", "Arn")
+                  ]
+                }
+              ]
+            }
+          )
         end
       end
 

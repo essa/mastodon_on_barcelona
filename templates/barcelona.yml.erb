@@ -17,6 +17,7 @@ environments:
   production:
     name: <%= heritage_name %>
     image_name: <%= repository_uri %>
+    before_deploy: rake db:migrate
     scheduled_tasks:
       - schedule: cron(15 20 ? * * *)
         command: rake mastodon:daily
