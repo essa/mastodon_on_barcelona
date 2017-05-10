@@ -64,6 +64,18 @@ module HelperMethods
     resources.add executor.outputs
   end
 
+  def attach_repository_policy_to_district(config, resources)
+    district_name = config[:district_name]
+    resp = iam_client.list_roles
+    role = resp.roles.select { |r| r.role_name.include?("barcelona-#{district_name}-ECSInstanceRole") }.first
+    raise "Instance Role for #{district_name} not found" unless role
+    iam_client.attach_role_policy(
+      role_name: role.role_name,
+      policy_arn: resources[:RepositoryPolicyArn],
+    )
+  end
+
+
   def checkout_mastodon(config)
     repository = config[:mastodon_source][:repository]
     branch = config[:mastodon_source][:branch]
@@ -189,6 +201,10 @@ module HelperMethods
 
   def ecr_client
     @ecr_client ||= Aws::ECR::Client.new
+  end
+
+  def iam_client
+    @iam_client ||= Aws::IAM::Client.new
   end
 
   def wait_cf_stack(executor)
@@ -381,6 +397,9 @@ class CLI < Thor
   desc 'setup_ecs_cluster', 'Increase number of host instances'
   def setup_ecs_cluster
     config = Config.load(self)
+    resources = Resources.load(self)
+    attach_repository_policy_to_district(config, resources)
+
     district_name = config[:district_name]
     json = {
       instance_type: config[:ecs][:instance_type],
