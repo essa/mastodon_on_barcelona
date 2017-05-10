@@ -80,6 +80,35 @@ module HelperMethods
     cmd(c)
   end
 
+  def install_barcelona_yml(config, resources)
+    from = "templates/barcelona.yml.erb"
+    to = "mastodon/barcelona.yml"
+    repository_uri = get_repository_uri(resources[:RepositoryForMastodon])
+    params = {
+      repository_uri: repository_uri,
+      heritage_name: config[:heritage_name],
+      certificate_arn: config[:certificate_arn]
+    }
+    render_template(from, to, params)
+  end
+
+  def create_endpoint_and_heritage(config, resources)
+    district_name = config[:district_name]
+    certificate_arn = config[:certificate_arn]
+    repository_uri = get_repository_uri(resources[:RepositoryForMastodon])
+    c = <<-EOC.split("\n").join(' &&')
+      cd mastodon
+      bcn endpoint create --district=#{district_name} --certificate-arn=#{certificate_arn} mstdn
+      bcn create --district=#{district_name} -e production
+    EOC
+    cmd(c)
+  end
+
+  def set_environment_variables(config, resources)
+    envs = {
+    }
+  end
+
   private
 
   def network_attributes(district_name)
@@ -211,6 +240,7 @@ config:
   region: <%= options[:region] %>
   district_name: <%= options[:district_name] %>
   heritage_name: <%= options[:name] %>
+  certificate_arn: <%= options[:certificate_arn] %>
   db:
     user: mastodon_admin
     password: <%= options[:db_password] %>
@@ -282,6 +312,7 @@ class CLI < Thor
   option :name, required: true
   option :district_name, required: true
   option :db_password, required: true
+  option :certificate_arn, required: true
 
   desc 'config', 'Configure for later process'
   def config
@@ -326,6 +357,14 @@ class CLI < Thor
     resources = Resources.load(self)
     checkout_mastodon(config) unless File::directory?('mastodon')
     build_and_push_docker_image(config, resources)
+  end
+
+  desc 'create_heritage', 'Create a heritage for Mastodon'
+  def create_heritage
+    config = Config.load(self)
+    resources = Resources.load(self)
+    install_barcelona_yml(config, resources)
+    create_endpoint_and_heritage(config, resources)
   end
 
   desc 'execute_all', 'allocate all resources'
