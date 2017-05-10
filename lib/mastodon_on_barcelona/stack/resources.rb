@@ -24,7 +24,7 @@ module MastodonOnBarcelon
             jj.RedisCluster do |jjj| 
               redis_cluster(jjj)
             end
-            jj.PolicyFullAccessToRepositories do |jjj| 
+            jj.PolicyFullAccessToRepository do |jjj| 
               policy_full_acccess_to_repositories(jjj)
             end
             jj.AdminUser do |jjj| 
@@ -71,6 +71,10 @@ module MastodonOnBarcelon
           jj.Description "Docker repository"
           jj.Value ref("DockerRepositoryForMastodon")
         end
+        j.RepositoryPolicyArn do |jj| 
+          jj.Description "Docker repository"
+          jj.Value ref("PolicyFullAccessToRepository")
+        end
       end
 
       def target!
@@ -104,13 +108,13 @@ module MastodonOnBarcelon
       def policy_full_acccess_to_repositories(j)
         district_name = config[:district_name]
         heritage_name = config[:heritage_name]
-        j.Type "AWS::IAM::Policy"
+        j.Type "AWS::IAM::ManagedPolicy"
         j.Properties do
-          j.PolicyName "FullAccessToRepositories#{district_name}#{heritage_name}"
+          j.Path "/repositories/"
           j.Users [ ref("AdminUser") ]
           j.PolicyDocument(
             { 
-              "Version" => "2008-10-17",
+              "Version" => "2012-10-17",
               "Statement" => [
                 {
                   "Sid" => "AllowPushPull",
@@ -125,7 +129,8 @@ module MastodonOnBarcelon
                     "ecr:CompleteLayerUpload"
                   ],
                   "Resource" => [
-                    get_attr("DockerRepositoryForMastodon", "Arn")
+                    get_attr("DockerRepositoryForMastodon", "Arn"),
+                    get_attr("DockerRepositoryForNginx", "Arn")
                   ]
                 }
               ]
