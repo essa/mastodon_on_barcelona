@@ -25,12 +25,15 @@ environments:
       - <<: *web_base
         name: web
         command: bundle exec rails s -p 3000 -b '0.0.0.0'
+        desired_count: 0
         listeners:
           - endpoint: mstdn
             health_check_path: /about
       - <<: *web_base
         name: streaming
         command: npm run start
+        memory: 256
+        desired_count: 0
         listeners:
           - endpoint: mstdn
             rule_conditions:

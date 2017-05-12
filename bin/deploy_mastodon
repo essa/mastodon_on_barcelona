@@ -129,7 +129,7 @@ module HelperMethods
       DB_NAME: 'mstdn',
       DB_PORT: 5432,
 
-      LOCAL_DOMAIN: config[:localdomain],
+      LOCAL_DOMAIN: config[:hostname],
       LOCAL_HTTPS: 'true',
 
       S3_ENABLED: true,
