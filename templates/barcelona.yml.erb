@@ -38,7 +38,7 @@ environments:
           - endpoint: <%= endpoint %>
             rule_conditions:
               - type: path-pattern
-                value: /api/v1/streaming
+                value: //api/v1/streaming/*
             health_check_path: /api/v1/streaming/health_check
             rule_priority: 10
       - <<: *worker_base

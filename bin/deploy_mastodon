@@ -118,7 +118,7 @@ module HelperMethods
     cmd(c)
   end
 
-  def do_set_environment_variables(config, resources)
+  def do_set_environment_variables(secret, config, resources)
     paperclip_secret = (resources[:PAPER_CLIP_SECRET] || SecureRandom.hex(64) )
     secret_key_base = (resources[:SECRET_KEY_BASE] || SecureRandom.hex(64) )
     otp_secret = (resources[:OTP_SECRET] || SecureRandom.hex(64) )
@@ -137,7 +137,7 @@ module HelperMethods
       S3_BUCKET: resources[:MediaBucket],
       S3_REGION: config[:region],
       S3_PROTOCOL: 'https',
-      S3_HOSTNAME: "#{resources[:MediaBucket]}.s3.amazonaws.com"
+      S3_HOSTNAME: "s3.amazonaws.com"
     }
     secret_envs = {
       DB_PASS: config[:db][:password],
@@ -147,10 +147,11 @@ module HelperMethods
       S3_AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
       S3_AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
     }
-    cmd 'cd mastodon && bcn env set -e production ' + envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
-    puts "waiting for completion of env setting..."
-    sleep 60
-    cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
+    if secret
+      cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
+    else
+      cmd 'cd mastodon && bcn env set -e production ' + envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
+    end
 
     resources[:PAPER_CLIP_SECRET] = paperclip_secret
     resources[:SECRET_KEY_BASE] = secret_key_base
@@ -428,11 +429,12 @@ class CLI < Thor
     do_create_heritage(config, resources)
   end
 
+  option :secret, type: :boolean
   desc 'set_environment_variables', 'Set environemt variables to barcelona heritage'
   def set_environment_variables
     config = Config.load(self)
     resources = Resources.load(self)
-    do_set_environment_variables(config, resources)
+    do_set_environment_variables(options[:secret], config, resources)
     resources.save
   end
 
