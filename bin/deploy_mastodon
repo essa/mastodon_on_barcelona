@@ -101,7 +101,8 @@ module HelperMethods
     params = {
       repository_uri: repository_uri,
       heritage_name: config[:heritage_name],
-      certificate_arn: config[:certificate_arn]
+      certificate_arn: config[:certificate_arn],
+      endpoint: config[:endpoint]
     }
     render_template(from, to, params)
   end
@@ -143,10 +144,12 @@ module HelperMethods
       PAPERCLIP_SECRET: paperclip_secret,
       SECRET_KEY_BASE: secret_key_base,
       OTP_SECRET: otp_secret,
-      AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
-      AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
+      S3_AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
+      S3_AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
     }
     cmd 'cd mastodon && bcn env set -e production ' + envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
+    puts "waiting for completion of env setting..."
+    sleep 60
     cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
 
     resources[:PAPER_CLIP_SECRET] = paperclip_secret
@@ -291,6 +294,7 @@ config:
   district_name: <%= options[:district_name] %>
   heritage_name: <%= options[:name] %>
   certificate_arn: <%= options[:certificate_arn] %>
+  endpoint: <%= options[:endpoint] %>
   db:
     user: mastodon_admin
     password: <%= SecureRandom.hex %>
@@ -350,7 +354,6 @@ class Resources
   end
 
   def save
-    p values, values.to_yaml
     File::open(path, 'w') do |f| 
       f.puts values.deep_stringify_keys.to_yaml
     end
@@ -367,6 +370,7 @@ class CLI < Thor
   option :district_name, required: true
   option :certificate_arn, required: true
   option :hostname, required: true
+  option :endpoint, required: true
 
   desc 'config', 'Configure for later process'
   def config

@@ -172,7 +172,7 @@ module MastodonOnBarcelon
       def admin_user_access_key(j)
         j.Type "AWS::IAM::AccessKey"
         j.Properties do
-          j.UserName admin_user_name
+          j.UserName ref("AdminUser")
         end
       end
 
