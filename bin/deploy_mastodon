@@ -119,10 +119,7 @@ module HelperMethods
     cmd(c)
   end
 
-  def do_set_environment_variables(secret, config, resources)
-    paperclip_secret = (resources[:PAPER_CLIP_SECRET] || SecureRandom.hex(64) )
-    secret_key_base = (resources[:SECRET_KEY_BASE] || SecureRandom.hex(64) )
-    otp_secret = (resources[:OTP_SECRET] || SecureRandom.hex(64) )
+  def do_set_environment_variables(config, resources)
     envs = {
       REDIS_HOST: resources[:RedisEndPoint],
       REDIS_PORT: 6379,
@@ -140,6 +137,13 @@ module HelperMethods
       S3_PROTOCOL: 'https',
       S3_HOSTNAME: "s3.amazonaws.com"
     }
+    cmd 'cd mastodon && bcn env set -e production ' + envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
+  end
+
+  def do_set_secret_environment_variables(config, resources)
+    paperclip_secret = (resources[:PAPER_CLIP_SECRET] || SecureRandom.hex(64) )
+    secret_key_base = (resources[:SECRET_KEY_BASE] || SecureRandom.hex(64) )
+    otp_secret = (resources[:OTP_SECRET] || SecureRandom.hex(64) )
     secret_envs = {
       DB_PASS: config[:db][:password],
       PAPERCLIP_SECRET: paperclip_secret,
@@ -148,11 +152,7 @@ module HelperMethods
       S3_AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
       S3_AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
     }
-    if secret
-      cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
-    else
-      cmd 'cd mastodon && bcn env set -e production ' + envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
-    end
+    cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
 
     resources[:PAPER_CLIP_SECRET] = paperclip_secret
     resources[:SECRET_KEY_BASE] = secret_key_base
@@ -204,6 +204,10 @@ module HelperMethods
     @cf_client ||= Aws::CloudFormation::Client.new
   end
 
+  def ecs_client
+    @ecs_client ||= Aws::ECS::Client.new
+  end
+
   def ecr_client
     @ecr_client ||= Aws::ECR::Client.new
   end
@@ -240,6 +244,48 @@ module HelperMethods
   def get_repository_uri(name)
     r = ecr_client.describe_repositories(repository_names: [name])
     r.repositories.first.repository_uri
+  end
+
+  def any_stack_running?
+    r = cf_client.describe_stacks
+    raise "can't get stack status" unless r and r.stacks and r.stacks.size > 0
+    r.stacks.any? do |s| 
+      s.stack_status =~ /_IN_PROGRESS/
+    end
+  end
+
+  def display_stacks_not_completed
+    r = cf_client.describe_stacks
+    raise "can't get stack status" unless r and r.stacks and r.stacks.size > 0
+    r.stacks.each do |s| 
+      next if s.stack_status =~ /COMPLETE/
+      puts "#{s.stack_name} #{s.stack_status}"
+    end
+  end
+
+  def wait_for_all_stacks_complete
+    sleep 3
+    puts "waiting for stacks..."
+    display_stacks_not_completed
+    while any_stack_running?
+      print "."
+      sleep 10
+    end
+    puts
+  end
+
+  def set_desired_count_of_all_service(count, config)
+    district_name = config[:district_name]
+    heritage_name = config[:heritage_name]
+    service_names = [
+      "#{district_name}-#{heritage_name}-web",
+      "#{district_name}-#{heritage_name}-streaming", 
+      "#{district_name}-#{heritage_name}-worker", 
+    ]
+    r = ecs_client.describe_services(cluster: district_name, services: service_names)
+    r.services.each do |s| 
+      ecs_client.update_service(service: s.service_name, desired_count: count)
+    end
   end
 end
 
@@ -306,18 +352,32 @@ class CLI < Thor
 
   desc 'create_heritage', 'Create a heritage for Mastodon'
   def create_heritage
+    if any_stack_running? 
+      display_stacks_not_completed
+      say("can't execute this command until all stacks are completed")
+      exit 1
+    end
     config = Config.load(self)
     resources = Resources.load(self)
-    install_barcelona_yml(config, resources)
-    do_create_heritage(config, resources)
-  end
 
-  option :secret, type: :boolean
-  desc 'set_environment_variables', 'Set environemt variables to barcelona heritage'
-  def set_environment_variables
-    config = Config.load(self)
-    resources = Resources.load(self)
-    do_set_environment_variables(options[:secret], config, resources)
+    install_barcelona_yml(config, resources)
+    
+    do_create_heritage(config, resources)
+    set_desired_count_of_all_service(0, config) # Make service stacks terminate faster
+    wait_for_all_stacks_complete
+
+    do_set_environment_variables(config, resources)
+    set_desired_count_of_all_service(0, config)
+    wait_for_all_stacks_complete
+
+    do_set_secret_environment_variables(config, resources)
+    set_desired_count_of_all_service(0, config)
+    wait_for_all_stacks_complete
+
+    cmd("cd mastodon && bcn deploy -e production")
+    set_desired_count_of_all_service(1, config)
+    wait_for_all_stacks_complete
+
     resources.save
   end
 
