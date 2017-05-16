@@ -7,11 +7,11 @@ web_base: &web_base
   service_type: web
   force_ssl: true
   cpu: 256
-  memory: 768
+  memory: 256
 
 worker_base: &worker_base
   cpu: 128
-  memory: 512
+  memory: 256
 
 environments:
   production:
@@ -32,7 +32,7 @@ environments:
       - <<: *web_base
         name: streaming
         command: npm run start
-        memory: 256
+        memory: 128
         desired_count: 0 # should be increased after setup
         listeners:
           - endpoint: <%= endpoint %>

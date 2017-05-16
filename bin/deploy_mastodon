@@ -263,28 +263,36 @@ module HelperMethods
     end
   end
 
-  def wait_for_all_stacks_complete
+  def wait_for_all_stacks_complete(&block)
     sleep 3
     puts "waiting for stacks..."
     display_stacks_not_completed
     while any_stack_running?
       print "."
+      block.call if block
       sleep 10
     end
     puts
   end
 
   def set_desired_count_of_all_service(count, config)
+    return
+
+    # not completed
+    # This may make updating of ECS service first
     district_name = config[:district_name]
     heritage_name = config[:heritage_name]
-    service_names = [
-      "#{district_name}-#{heritage_name}-web",
-      "#{district_name}-#{heritage_name}-streaming", 
-      "#{district_name}-#{heritage_name}-worker", 
-    ]
+    r = ecs_client.list_services(cluster: district_name)
+    service_names = r.service_arns.map do |arn| 
+      arn.split('/')[1]
+    end.select do |service_name| 
+      service_name.include?(heritage_name)
+    end
     r = ecs_client.describe_services(cluster: district_name, services: service_names)
     r.services.each do |s| 
-      ecs_client.update_service(service: s.service_name, desired_count: count)
+      if s.desired_count != count
+        ecs_client.update_service(service: s.service_name, desired_count: count)
+      end
     end
   end
 end
@@ -363,28 +371,26 @@ class CLI < Thor
     install_barcelona_yml(config, resources)
     
     do_create_heritage(config, resources)
-    set_desired_count_of_all_service(0, config) # Make service stacks terminate faster
-    wait_for_all_stacks_complete
+    wait_for_all_stacks_complete do
+      set_desired_count_of_all_service(0, config) # Make service stacks terminate faster
+    end
 
     do_set_environment_variables(config, resources)
-    set_desired_count_of_all_service(0, config)
-    wait_for_all_stacks_complete
+    wait_for_all_stacks_complete do
+      set_desired_count_of_all_service(0, config) # Make service stacks terminate faster
+    end
 
     do_set_secret_environment_variables(config, resources)
-    set_desired_count_of_all_service(0, config)
-    wait_for_all_stacks_complete
+    wait_for_all_stacks_complete do
+      set_desired_count_of_all_service(0, config) # Make service stacks terminate faster
+    end
 
     cmd("cd mastodon && bcn deploy -e production")
-    set_desired_count_of_all_service(1, config)
-    wait_for_all_stacks_complete
+    wait_for_all_stacks_complete do
+      set_desired_count_of_all_service(1, config)
+    end
 
     resources.save
-  end
-
-  desc 'execute_all', 'allocate all resources'
-  def execute_all
-    puts "start"
-    puts "end of allocate_resources"
   end
 
   private
@@ -393,13 +399,6 @@ class CLI < Thor
     ret = check_bcn && check_aws_creadential
     exit(1) unless ret
     say "OK"
-  end
-  def region
-    options[:region]
-  end
-
-  def district_name
-    options[:district_name]
   end
 end
 
