@@ -149,8 +149,8 @@ module HelperMethods
       PAPERCLIP_SECRET: paperclip_secret,
       SECRET_KEY_BASE: secret_key_base,
       OTP_SECRET: otp_secret,
-      S3_AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
-      S3_AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
+      AWS_ACCESS_KEY_ID: resources[:AwsAccessKeyId],
+      AWS_SECRET_ACCESS_KEY: resources[:AwsSecretAccessKey],
     }
     cmd 'cd mastodon && bcn env set -e production --secret ' + secret_envs.map { |k, v| "#{k}='#{v}'"}.join(' ')
 
