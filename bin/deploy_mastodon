@@ -87,7 +87,7 @@ module HelperMethods
   def build_and_push_docker_image(config, resources)
     repository_uri = get_repository_uri(resources[:RepositoryForMastodon])
     c = <<-EOC.split("\n").join(' &&')
-      eval `aws ecr get-login`
+      eval `aws ecr get-login --no-include-email`
       cd mastodon
       docker build . -t '#{repository_uri}:latest'
       docker push '#{repository_uri}:latest'
